@@ -1,0 +1,15 @@
+# cache
+__pycache__/
+
+# build files
+*.egg-info/
+build/
+
+# MacOS files
+.DS_Store
+
+# Pycharm
+.idea/
+
+# Pyre
+.pyre/

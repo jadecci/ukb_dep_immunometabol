@@ -1,2 +1,8 @@
 * annex.backend=MD5E
-**/.git* annex.largefiles=nothing
+**/*.txt annex.largefiles=nothing
+**/*.md annex.largefiles=nothing
+**/*.tsv annex.largefiles=nothing
+**/*.csv annex.largefiles=nothing
+**/*.git* annex.largefiles=nothing
+*.py annex.largefiles=nothing
+replication_data/* annex.largefiles=nothing
