@@ -1,7 +1,6 @@
 from pathlib import Path
 import argparse
 
-from matplotlib.patches import Patch
 from pycirclize import Circos
 from scipy.stats import pearsonr
 from statsmodels.stats.multitest import multipletests
@@ -19,24 +18,25 @@ def pcorr(data: pd.DataFrame, x: str, y: str) -> tuple[float, float]:
 
 
 def corr_analysis(
-        data: pd.DataFrame, fields_pd: pd.DataFrame, pheno: str, out_dir: Path) -> pd.DataFrame:
+        data: pd.DataFrame, pheno_desc: pd.DataFrame, pheno_cols: dict, pheno: str,
+        out_dir: Path) -> pd.DataFrame:
     out_name = col_type.replace(" ", "-")
     genders = {0: "female", 1: "male"}
     data_corr = {}
     for gender_i in [0, 1]:
         for diagn in [0, 1]:
             data_curr = data.loc[(data["31-0.0"] == gender_i) & (data["MDD diagnosis"] == diagn)]
-            for pheno_col in field_dict[pheno]:
-                fields_curr = fields_pd.loc[fields_pd["Field ID"] == pheno_col.split("-")[0]]
-                field_desc = fields_curr["Field Description"].values[0]
+            for pheno_col in pheno_cols[pheno]:
                 for dep_col in field_dict["Dep score"]:
+                    pheno_curr = pheno_desc.loc[pheno_desc["Field ID"] == pheno_col.split("-")[0]]
+                    pheno_desc_curr = pheno_curr["Field Description"].values[0]
                     ind = f"{pheno_col}-{dep_col}-{genders[gender_i]}-{diagn}"
                     r, p = pcorr(data_curr, pheno_col, dep_col)
                     data_corr[ind] = {
                         "Type": pheno, "Data field": pheno_col, "r": r, "p": p,
                         "Absolute r": np.abs(r), "Gender": genders[gender_i],
                         "MDD diagnosis": diagn, "Depressive score field": dep_col,
-                        "Field description": field_desc, "Depressive score": dep_desc[dep_col]}
+                        "Depressive score": dep_desc[dep_col], "Field description": pheno_desc_curr}
 
     data_corr = pd.DataFrame(data_corr).T
     data_corr.to_csv(Path(out_dir, f"ukb_dep_corr_pheno_{out_name}.csv"))
@@ -62,8 +62,8 @@ col_dtypes = {
 args.img_dir.mkdir(parents=True, exist_ok=True)
 args.out_dir.mkdir(parents=True, exist_ok=True)
 
-col_names = {}
-sectors = {"Body fat": 0, "Blood count": 0, "Blood metabol": 0}
+col_names = {"sii": "SII", "nlr": "NLR", "plr": "PLR", "lmr": "LMR"}
+sectors = {"Body fat": 0, "Blood count": 4, "Blood metabol": 0}
 col_type_names_plot = {
     "Body fat": "Body fat", "Blood metabol": "Blood metabolic markers",
     "Blood count": "Blood cell count"}
@@ -107,12 +107,13 @@ for col_type in col_type_pheno:
         data_pheno.loc[:, "nlr"] = data_pheno["30140-2.0"] / data_pheno["30120-2.0"]
         data_pheno.loc[:, "plr"] = data_pheno["30080-2.0"] / data_pheno["30120-2.0"]
         data_pheno.loc[:, "lmr"] = data_pheno["30120-2.0"] / data_pheno["30190-2.0"]
+        field_dict["Blood count"].extend(["sii", "nlr", "plr", "lmr"])
         fields = pd.concat([fields, pd.DataFrame({
             "Field ID": ["sii", "nlr", "plr", "lmr"], "Field Description": [
                 "Systemic immune-inflammation index (SII)", "Neutrophil-to-lymphocyte ratio (NLR)",
                 "Platelet-to-lymphocyte ratio (PLR)", "Lymphocyte-to-monocyte ratio (LMR)"]})])
 
-    data_corr_curr = corr_analysis(data_pheno, fields, col_type, args.out_dir)
+    data_corr_curr = corr_analysis(data_pheno, fields, field_dict, col_type, args.out_dir)
     data_corrs.append(data_corr_curr)
 data_corr_all = pd.concat(data_corrs, axis="index", join="inner")
 data_corr_all["r"] = data_corr_all["r"].fillna(0)
