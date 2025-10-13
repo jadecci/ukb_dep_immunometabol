@@ -11,29 +11,25 @@ def plot(
         data: pd.DataFrame, y_col: str, ytick: list | None, yticklabel: list, x_cols: list,
         out_name: str, plot_type: str):
     dep_desc = ["Depressive mood symptoms", "Depressive energy symptoms"]
-    f, ax = plt.subplots(nrows=2, ncols=2, sharex=False, sharey=True, figsize=(10, 5))
+    f, ax = plt.subplots(nrows=1, ncols=2, sharex=False, sharey=True, figsize=(10, 2.5))
     with sns.plotting_context(context="paper", font_scale=1.5):
         for x_i, x in enumerate(x_cols):
-            for y in [0, 1]:
-                data_y = data.loc[data["MDD diagnosis"] == y]
-                if plot_type == "violin":
-                    sns.violinplot(
-                        data_y, y=y_col, x=x, hue=y_col, orient="h", ax=ax[y][x_i], linecolor="k",
-                        dodge=False, order=yticklabel, palette="Greys", hue_order=yticklabel)
-                elif plot_type == "reg":
-                    sns.regplot(
-                        data_y, y=y_col, x=x, ax=ax[y][x_i], marker="x",
-                        scatter_kws={"color": ".2"}, line_kws={"color": "red"})
-                    r, p = pearsonr(data_y[y_col].astype(float), data_y[x].astype(float))
-                    ax[y][x_i].set_title(f"R = {r:.4f}, p = {p:.4f}", fontdict={"fontsize": 10})
-                    ax[y][x_i].set_yticks(ytick, labels=yticklabel)
-                if x_i == 0:
-                    ax[y][x_i].set_xticks(range(4, 25, 2))
-                elif x_i == 1:
-                    ax[y][x_i].set_xticks(range(4, 17, 2))
-            ax[0][x_i].set(xlabel="", ylabel="non-MDD")
-            ax[1][x_i].set(xlabel=dep_desc[x_i], ylabel="MDD")
-    plt.subplots_adjust(hspace=0.5)
+            if plot_type == "violin":
+                sns.violinplot(
+                    data, y=y_col, x=x, hue=y_col, orient="h", ax=ax[x_i], linecolor="k",
+                    dodge=False, order=yticklabel, palette="Greys", hue_order=yticklabel)
+            elif plot_type == "reg":
+                sns.regplot(
+                    data, y=y_col, x=x, ax=ax[x_i], marker="x", scatter_kws={"color": ".2"},
+                    line_kws={"color": "red"})
+                r, p = pearsonr(data[y_col].astype(float), data[x].astype(float))
+                ax[x_i].set_title(f"R = {r:.4f}, p = {p:.4f}", fontdict={"fontsize": 10})
+                ax[x_i].set_yticks(ytick, labels=yticklabel)
+            if x_i == 0:
+                ax[x_i].set_xticks(range(4, 25, 2))
+            elif x_i == 1:
+                ax[x_i].set_xticks(range(4, 17, 2))
+            ax[x_i].set(xlabel=dep_desc[x_i])
     f.savefig(Path(args.img_dir, f"ukb_dep_{out_name}.png"), bbox_inches="tight", dpi=500)
     plt.close(f)
 
@@ -48,8 +44,7 @@ args = parser.parse_args()
 
 dep_score = ["Sum score (cluster 5)", "Sum score (cluster 6)"]
 col_dtypes = {
-    "eid": str, "Sum score (cluster 5)": float, "Sum score (cluster 6)": float,
-    "MDD diagnosis": float}
+    "eid": str, "Sum score (cluster 5)": float, "Sum score (cluster 6)": float}
 args.img_dir.mkdir(parents=True, exist_ok=True)
 
 # Phenotype field information

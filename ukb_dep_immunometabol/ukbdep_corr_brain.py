@@ -40,77 +40,71 @@ aseg_lut = pd.read_csv(Path(args.data_dir, "FS_aseg_labels.csv"))
 
 for dep_i, dep in enumerate(dep_scores):
     for gender in ["female", "male"]:
-        for diagn in [0, 1]:
-            data_curr = data.loc[
-                (data["Gender"] == gender) & (data["MDD diagnosis"] == diagn)
-                & (data["Depressive score field"] == dep)]
+        data_curr = data.loc[(data["Gender"] == gender) & (data["Depressive score field"] == dep)]
 
-            # White matter biomarkers
-            for wm in ["FA", "MD", "ICVF", "ISOVF", "OD"]:
-                data_wm = data_curr.loc[data_curr["Field description"].str.contains(f"Mean {wm}")]
-                vol_curr = np.zeros(jhu_vol.shape)
-                for _, data_row in data_wm.iterrows():
-                    wm_region = data_row["Field description"].split("in ")[1]
-                    wm_region_val = jhu_lut["Atlas value"].loc[jhu_lut["Brain region"] == wm_region]
-                    vol_curr[np.where(jhu_vol == wm_region_val.values[0])] = data_row["r"]
+        # White matter biomarkers
+        for wm in ["FA", "MD", "ICVF", "ISOVF", "OD"]:
+            data_wm = data_curr.loc[data_curr["Field description"].str.contains(f"Mean {wm}")]
+            vol_curr = np.zeros(jhu_vol.shape)
+            for _, data_row in data_wm.iterrows():
+                wm_region = data_row["Field description"].split("in ")[1]
+                wm_region_val = jhu_lut["Atlas value"].loc[jhu_lut["Brain region"] == wm_region]
+                vol_curr[np.where(jhu_vol == wm_region_val.values[0])] = data_row["r"]
 
-                wm_img = nib.Nifti1Image(vol_curr, jhu_img.affine)
-                plt = plot_glass_brain(
-                    wm_img, colorbar=True, cmap="coolwarm", vmax=0.1, symmetric_cbar=True,
-                    plot_abs=False, threshold=0.01)
-                plt.savefig(Path(args.img_dir, f"corr_dep{dep_i}_{wm}_{gender}_{diagn}.png"))
-                plt.close()
-
-            # Gray matter volume (cortical) biomarkers
-            data_gmv = data_curr.loc[
-                (data_curr["Type"] == "Brain GMV") & (data_curr["Data field"].str[:2] == "27")]
-            fs_surf_l = np.zeros(l_annot.shape)
-            fs_surf_r = np.zeros(r_annot.shape)
-            for _, data_row in data_gmv.iterrows():
-                fs_region = data_row["Field description"].split("Volume of ")[1]
-                if "left" in fs_region:
-                    fs_region_val = fs_lut["Atlas value"].loc[
-                        fs_lut["Left brain region"] == fs_region]
-                    fs_surf_l[np.where(l_annot == fs_region_val.values[0])] = data_row["r"]
-                if "right" in fs_region:
-                    fs_region_val = fs_lut["Atlas value"].loc[
-                        fs_lut["Right brain region"] == fs_region]
-                    fs_surf_r[np.where(r_annot == fs_region_val.values[0])] = data_row["r"]
-
-            plt = plot_surf_stat_map(
-                surf_mesh=fs_meshes["inflated"], stat_map=fs_surf_l, bg_map=fs_bg, hemi="left",
-                cmap="coolwarm", colorbar=True, vmax=0.1, symmetric_cbar=True, threshold=0.01,
-                view="lateral")
-            plt.savefig(Path(args.img_dir, f"corr_dep{dep_i}_gmv_{gender}_{diagn}_ll.png"))
-            plt = plot_surf_stat_map(
-                surf_mesh=fs_meshes["inflated"], stat_map=fs_surf_l, bg_map=fs_bg, hemi="left",
-                cmap="coolwarm", colorbar=True, vmax=0.1, symmetric_cbar=True, threshold=0.01,
-                view="medial")
-            plt.savefig(Path(args.img_dir, f"corr_dep{dep_i}_gmv_{gender}_{diagn}_lm.png"))
-            plt = plot_surf_stat_map(
-                surf_mesh=fs_meshes["inflated"], stat_map=fs_surf_r, bg_map=fs_bg, hemi="right",
-                cmap="coolwarm", colorbar=True, vmax=0.1, symmetric_cbar=True, threshold=0.01,
-                view="lateral")
-            plt.savefig(Path(args.img_dir, f"corr_dep{dep_i}_gmv_{gender}_{diagn}_rl.png"))
-            plt = plot_surf_stat_map(
-                surf_mesh=fs_meshes["inflated"], stat_map=fs_surf_r, bg_map=fs_bg, hemi="right",
-                cmap="coolwarm", colorbar=True, vmax=0.1, symmetric_cbar=True, threshold=0.01,
-                view="medial")
-            plt.savefig(Path(args.img_dir, f"corr_dep{dep_i}_gmv_{gender}_{diagn}_rm.png"))
-
-            # Gray matter volume (subcortical) biomarkers
-            data_gmv = data_curr.loc[
-                (data_curr["Type"] == "Brain GMV") & (data_curr["Data field"].str[:2] == "26")]
-            vol_curr = np.zeros(aseg_vol.shape)
-            for _, data_row in data_gmv.iterrows():
-                aseg_region = data_row["Field description"].split("Volume of ")[1]
-                aseg_region_val = aseg_lut["Atlas value"].loc[
-                    aseg_lut["Brain region"] == aseg_region]
-                vol_curr[np.where(aseg_vol == aseg_region_val.values[0])] = data_row["r"]
-
-            gmv_img = nib.Nifti1Image(vol_curr, aseg_img.affine)
+            wm_img = nib.Nifti1Image(vol_curr, jhu_img.affine)
             plt = plot_glass_brain(
-                gmv_img, colorbar=True, cmap="coolwarm", vmax=0.1, symmetric_cbar=True,
+                wm_img, colorbar=True, cmap="coolwarm", vmax=0.1, symmetric_cbar=True,
                 plot_abs=False, threshold=0.01)
-            plt.savefig(Path(args.img_dir, f"corr_dep{dep_i}_gmv_subcort_{gender}_{diagn}.png"))
+            plt.savefig(Path(args.img_dir, f"corr_dep{dep_i}_{wm}_{gender}.png"))
             plt.close()
+
+        # Gray matter volume (cortical) biomarkers
+        data_gmv = data_curr.loc[
+            (data_curr["Type"] == "Brain GMV") & (data_curr["Data field"].str[:2] == "27")]
+        fs_surf_l = np.zeros(l_annot.shape)
+        fs_surf_r = np.zeros(r_annot.shape)
+        for _, data_row in data_gmv.iterrows():
+            fs_region = data_row["Field description"].split("Volume of ")[1]
+            if "left" in fs_region:
+                fs_region_val = fs_lut["Atlas value"].loc[fs_lut["Left brain region"] == fs_region]
+                fs_surf_l[np.where(l_annot == fs_region_val.values[0])] = data_row["r"]
+            if "right" in fs_region:
+                fs_region_val = fs_lut["Atlas value"].loc[fs_lut["Right brain region"] == fs_region]
+                fs_surf_r[np.where(r_annot == fs_region_val.values[0])] = data_row["r"]
+
+        plt = plot_surf_stat_map(
+            surf_mesh=fs_meshes["inflated"], stat_map=fs_surf_l, bg_map=fs_bg, hemi="left",
+            cmap="coolwarm", colorbar=True, vmax=0.1, symmetric_cbar=True, threshold=0.01,
+            view="lateral")
+        plt.savefig(Path(args.img_dir, f"corr_dep{dep_i}_gmv_{gender}_ll.png"))
+        plt = plot_surf_stat_map(
+            surf_mesh=fs_meshes["inflated"], stat_map=fs_surf_l, bg_map=fs_bg, hemi="left",
+            cmap="coolwarm", colorbar=True, vmax=0.1, symmetric_cbar=True, threshold=0.01,
+            view="medial")
+        plt.savefig(Path(args.img_dir, f"corr_dep{dep_i}_gmv_{gender}_lm.png"))
+        plt = plot_surf_stat_map(
+            surf_mesh=fs_meshes["inflated"], stat_map=fs_surf_r, bg_map=fs_bg, hemi="right",
+            cmap="coolwarm", colorbar=True, vmax=0.1, symmetric_cbar=True, threshold=0.01,
+            view="lateral")
+        plt.savefig(Path(args.img_dir, f"corr_dep{dep_i}_gmv_{gender}_rl.png"))
+        plt = plot_surf_stat_map(
+            surf_mesh=fs_meshes["inflated"], stat_map=fs_surf_r, bg_map=fs_bg, hemi="right",
+            cmap="coolwarm", colorbar=True, vmax=0.1, symmetric_cbar=True, threshold=0.01,
+            view="medial")
+        plt.savefig(Path(args.img_dir, f"corr_dep{dep_i}_gmv_{gender}_rm.png"))
+
+        # Gray matter volume (subcortical) biomarkers
+        data_gmv = data_curr.loc[
+            (data_curr["Type"] == "Brain GMV") & (data_curr["Data field"].str[:2] == "26")]
+        vol_curr = np.zeros(aseg_vol.shape)
+        for _, data_row in data_gmv.iterrows():
+            aseg_region = data_row["Field description"].split("Volume of ")[1]
+            aseg_region_val = aseg_lut["Atlas value"].loc[aseg_lut["Brain region"] == aseg_region]
+            vol_curr[np.where(aseg_vol == aseg_region_val.values[0])] = data_row["r"]
+
+        gmv_img = nib.Nifti1Image(vol_curr, aseg_img.affine)
+        plt = plot_glass_brain(
+            gmv_img, colorbar=True, cmap="coolwarm", vmax=0.1, symmetric_cbar=True,
+            plot_abs=False, threshold=0.01)
+        plt.savefig(Path(args.img_dir, f"corr_dep{dep_i}_gmv_subcort_{gender}.png"))
+        plt.close()

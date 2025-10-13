@@ -20,7 +20,6 @@ args = parser.parse_args()
 field_dict = {}
 col_dtypes = {"eid": str, "MDD diagnosis": float}
 args.img_dir.mkdir(parents=True, exist_ok=True)
-# data_file = Path(args.data_dir, "ukb_data_all.csv")
 data_file = Path(args.data_dir, "ukb_data_cluster.csv")
 
 # Phenotype field information

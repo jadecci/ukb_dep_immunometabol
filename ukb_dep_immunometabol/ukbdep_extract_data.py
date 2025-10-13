@@ -41,7 +41,7 @@ for _, field_row in fields.iterrows():
         if not np.isnan(field_row["To Exclude 2"]):
             excludes[col_id].append(field_row["To Exclude 2"])
 
-# ICD-10 code, death record
+# ICD-10 code
 data_head = pd.read_table(args.raw_tsv, delimiter="\t", encoding=encoding, nrows=2)
 for col in data_head.columns:
     if col.split("-")[0] in "41270":
