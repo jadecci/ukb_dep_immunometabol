@@ -29,7 +29,7 @@ def plot(
                 ax[x_i].set_xticks(range(4, 25, 2))
             elif x_i == 1:
                 ax[x_i].set_xticks(range(4, 17, 2))
-            ax[x_i].set(xlabel=dep_desc[x_i])
+            ax[x_i].set(xlabel=dep_desc[x_i], ylabel="")
     f.savefig(Path(args.img_dir, f"ukb_dep_{out_name}.png"), bbox_inches="tight", dpi=500)
     plt.close(f)
 
