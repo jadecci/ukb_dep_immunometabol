@@ -1,1 +1,41 @@
-.git/annex/objects/56/62/MD5E-s1133--c586e6ea773d02eef122271047a8cda2.toml/MD5E-s1133--c586e6ea773d02eef122271047a8cda2.toml
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ukb_dep_immunometabol"
+authors = [
+    {name = "Jianxiao Wu", email = "j.wu@fz-juelich.de"}
+]
+description = "Association between depressive symptoms and immunometabolic biomarkers in UK Biobank"
+readme = {file = "README.md", content-type = "text/markdown"}
+requires-python = ">=3.11"
+keywords = ["neuroimaging", "multimodal"]
+license = {file = "LICENSE"}
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Topic :: Neuroscience :: Neuroimaging",
+]
+dependencies = [
+    "pandas ~= 2.2.3",
+    "numpy ~= 2.2.2",
+    "scipy ~= 1.16.2",
+    "scikit-learn ~= 1.5.2",
+    "statsmodels ~= 0.14.4",
+    "nibabel ~= 5.3.2",
+    "nilearn ~= 0.11.1",
+    "seaborn ~= 0.13.2",
+    "matplotlib ~= 3.10.0",
+    "pycirclize ~= 1.9.1",
+]
+dynamic = ["version"]
+
+[project.urls]
+repository = "https://github.com/jadecci/ukb_dep_immunometabol"
+repository-gin = "https://gin.g-node.org/jadecci/ukb_deppred"
+
+[tool.setuptools]
+packages = ["ukb_dep_immunometabol"]
+
+[tool.setuptools.dynamic]
+version = {attr = "ukb_dep_immunometabol.VERSION"}

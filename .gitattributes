@@ -3,7 +3,9 @@
 **/*.md annex.largefiles=nothing
 **/*.tsv annex.largefiles=nothing
 **/*.csv annex.largefiles=nothing
+**/*.toml annex.largefiles=nothing
+**/LICENSE annex.largefiles=nothin
 **/*.git* annex.largefiles=nothing
-*.py annex.largefiles=nothing
+**/*.py annex.largefiles=nothing
 replication_data/* annex.largefiles=nothing
 * annex.largefiles=((mimeencoding=binary)and(largerthan=0))
