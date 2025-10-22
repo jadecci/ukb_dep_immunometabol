@@ -1,7 +1,7 @@
 from pathlib import Path
 import argparse
 
-from scipy.stats import pearsonr
+from scipy.stats import pearsonr, ttest_ind, f_oneway
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
@@ -11,27 +11,38 @@ def plot(
         data: pd.DataFrame, y_col: str, ytick: list | None, yticklabel: list, x_cols: list,
         out_name: str, plot_type: str):
     dep_desc = ["Depressive mood symptoms", "Depressive energy symptoms"]
-    f, ax = plt.subplots(nrows=1, ncols=2, sharex=False, sharey=True, figsize=(10, 2.5))
+    fig, ax = plt.subplots(nrows=1, ncols=2, sharex=False, sharey=True, figsize=(10, 2.5))
     with sns.plotting_context(context="paper", font_scale=1.5):
         for x_i, x in enumerate(x_cols):
             if plot_type == "violin":
                 sns.violinplot(
                     data, y=y_col, x=x, hue=y_col, orient="h", ax=ax[x_i], linecolor="k",
                     dodge=False, order=yticklabel, palette="Greys", hue_order=yticklabel)
-            elif plot_type == "reg":
+                if out_name == "gender": # binary
+                    res = ttest_ind(
+                        data[x].loc[data[y_col] == "Female"].astype(float),
+                        data[x].loc[data[y_col] == "Male"].astype(float), equal_var=False)
+                    ax[x_i].set_title(
+                        f"T = {res.statistic: .3f}, p = {res.pvalue: .2E}",
+                        fontdict={"fontsize": 10})
+                else: # categorical
+                    sample = [data[x].loc[data[y_col] == col] for col in yticklabel]
+                    f, p = f_oneway(*sample, equal_var=False)
+                    ax[x_i].set_title(f"F = {f: .3f}, p = {p: .2E}", fontdict={"fontsize": 10})
+            elif plot_type == "reg": # continuous
                 sns.regplot(
                     data, y=y_col, x=x, ax=ax[x_i], marker="x", scatter_kws={"color": ".2"},
                     line_kws={"color": "red"})
                 r, p = pearsonr(data[y_col].astype(float), data[x].astype(float))
-                ax[x_i].set_title(f"R = {r:.4f}, p = {p:.4f}", fontdict={"fontsize": 10})
+                ax[x_i].set_title(f"R = {r:.3f}, p = {p:.2E}", fontdict={"fontsize": 10})
                 ax[x_i].set_yticks(ytick, labels=yticklabel)
             if x_i == 0:
                 ax[x_i].set_xticks(range(4, 25, 2))
             elif x_i == 1:
                 ax[x_i].set_xticks(range(4, 17, 2))
             ax[x_i].set(xlabel=dep_desc[x_i], ylabel="")
-    f.savefig(Path(args.img_dir, f"ukb_dep_{out_name}.png"), bbox_inches="tight", dpi=500)
-    plt.close(f)
+    fig.savefig(Path(args.img_dir, f"ukb_dep_{out_name}.png"), bbox_inches="tight", dpi=500)
+    plt.close(fig)
 
 
 parser = argparse.ArgumentParser(
