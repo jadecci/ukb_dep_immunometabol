@@ -6,3 +6,4 @@
 **/*.git* annex.largefiles=nothing
 *.py annex.largefiles=nothing
 replication_data/* annex.largefiles=nothing
+* annex.largefiles=((mimeencoding=binary)and(largerthan=0))
