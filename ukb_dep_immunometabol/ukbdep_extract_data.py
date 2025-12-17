@@ -89,10 +89,7 @@ data_remove = all_data.copy()
 for _, field_df_row in fields.iterrows():
     if field_df_row["Type"] == "Dep sympt":
         col_id = f"{field_df_row['Field ID']}-{field_df_row['Instance']}.0"
-        if field_df_row["Notes"] == "N-12":
-            data_remove = data_remove.loc[data_remove[col_id] == 0]  # binary
-        else:
-            data_remove = data_remove.loc[data_remove[col_id] == 1]  # frequency
+        data_remove = data_remove.loc[data_remove[col_id] == 1]  # frequency
 all_data = all_data.drop(data_remove.index)
 print(f"Subjects who reported at least one symptom: N = {all_data.shape[0]}")
 
@@ -111,10 +108,6 @@ for data_i, data_row in all_data.iterrows():
     neu_diagn[data_i] = 1 if code_list else 0
 all_data = all_data.loc[pd.Series(neu_diagn) == 0]
 print(f"Subjects without neurological conditions: N = {all_data.shape[0]}")
-
-# Normalise GMV by subject-wise TIV
-all_data[field_dict["Brain GMV"]] = all_data[field_dict["Brain GMV"]].div(
-    all_data["26521-2.0"], axis="index")
 
 # Add MDD diagnosis column
 code_map = pd.read_csv(args.icd_code_csv)
@@ -140,7 +133,7 @@ all_data.to_csv(all_data_file)
 
 # Define sample for each phenotype category
 field_req = field_dict["Dep sympt"] + field_dict["Sociodemo"] + ["MDD diagnosis"]
-col_type_pheno = ["Body fat", "Brain GMV", "Brain WM", "Blood metabol", "Blood count"]
+col_type_pheno = ["Body fat", "Brain WM", "Blood metabol", "Blood count"]
 data_cluster = all_data.copy()
 for col_type in col_type_pheno:
     pheno_name = col_type.replace(" ", "-")
