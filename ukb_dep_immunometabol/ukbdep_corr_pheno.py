@@ -20,13 +20,17 @@ def pcorr(data: pd.DataFrame, x: str, y: str) -> tuple[float, float]:
 def corr_analysis(
         data: pd.DataFrame, pheno_desc: pd.DataFrame, pheno_cols: dict, pheno: str,
         out_dir: Path) -> pd.DataFrame:
-    out_name = col_type.replace(" ", "-")
+    dep_desc = {
+        "Sum score 2": f"Depressive mood\nsymptoms",
+        "Sum score 1": f"Depressive energy\nsymptoms"}
     genders = {0: "female", 1: "male"}
+
+    out_name = col_type.replace(" ", "-")
     data_corr = {}
     for gender_i in [0, 1]:
         data_curr = data.loc[data["31-0.0"] == gender_i]
         for pheno_col in pheno_cols[pheno]:
-            for dep_col in field_dict["Dep score"]:
+            for dep_col in pheno_cols["Dep score"]:
                 pheno_curr = pheno_desc.loc[pheno_desc["Field ID"] == pheno_col.split("-")[0]]
                 pheno_desc_curr = pheno_curr["Field Description"].values[0]
                 ind = f"{pheno_col}-{dep_col}-{genders[gender_i]}"
@@ -51,13 +55,9 @@ parser.add_argument("--img_dir", type=Path, help="Absolute path to output plots 
 parser.add_argument("--out_dir", type=Path, help="Absolute path to output directory")
 args = parser.parse_args()
 
-dep_desc = {
-    "Sum score (cluster 6)": f"Depressive mood\nsymptoms",
-    "Sum score (cluster 5)": f"Depressive energy\nsymptoms"}
-field_dict = {"Dep score": ["Sum score (cluster 5)", "Sum score (cluster 6)"]}
+field_dict = {"Dep score": ["Sum score 1", "Sum score 2"]}
 col_dtypes = {
-    "eid": str, "31-0.0": float, "21003-2.0": float, "Sum score (cluster 5)": float,
-    "Sum score (cluster 6)": float}
+    "eid": str, "31-0.0": float, "21003-2.0": float, "Sum score 1": float, "Sum score 2": float}
 args.img_dir.mkdir(parents=True, exist_ok=True)
 args.out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -87,7 +87,7 @@ for _, field_row in fields.iterrows():
 
 # Correlation analysis
 col_list_req = field_dict["Dep score"] + ["31-0.0", "21003-2.0", "eid"]
-col_type_pheno = ["Body fat", "Brain GMV", "Brain WM", "Blood metabol", "Blood count"]
+col_type_pheno = ["Body fat", "Brain WM", "Blood metabol", "Blood count"]
 data_corrs = []
 for col_type in col_type_pheno:
     # Association sample
@@ -130,10 +130,8 @@ for gender in ["female", "male"]:
 
     for col_type, sector in zip(sectors.keys(), circos.sectors):
         data_plot_curr = data_corr_curr.loc[data_corr_curr["Type"] == col_type]
-        data_energy = data_plot_curr.loc[
-            data_plot_curr["Depressive score field"] == "Sum score (cluster 5)"]
-        data_mood = data_plot_curr.loc[
-            data_plot_curr["Depressive score field"] == "Sum score (cluster 6)"]
+        data_mood = data_plot_curr.loc[data_plot_curr["Depressive score field"] == "Sum score 2"]
+        data_energy = data_plot_curr.loc[data_plot_curr["Depressive score field"] == "Sum score 1"]
 
         sector.axis(fc="none", lw=0)
         sector.text(col_type_names_plot[sector.name], size=12, r=155)

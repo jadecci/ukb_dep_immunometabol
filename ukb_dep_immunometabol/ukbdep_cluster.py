@@ -39,7 +39,7 @@ cols_curr = ["eid"] + field_dict["Dep sympt"]
 col_dtype_curr = {key: item for key, item in col_dtypes.items() if key in cols_curr}
 data = pd.read_csv(data_file, usecols=cols_curr, dtype=col_dtype_curr, index_col="eid")
 data_std = StandardScaler().fit_transform(data[field_dict["Dep sympt"]])
-model = FeatureAgglomeration(n_clusters=2, compute_distances=True)
+model = FeatureAgglomeration(n_clusters=3, linkage="ward", compute_distances=True)
 model.fit(data_std)
 
 # Dendrogram
@@ -55,29 +55,25 @@ linkage_mat = np.column_stack([model.children_, model.distances_, counts]).astyp
 dep_col_list = [col.split("-")[0] for col in field_dict["Dep sympt"]]
 labels_desc = fields["Field Description"].loc[fields["Field ID"].isin(dep_col_list)].tolist()
 labels_note = fields["Notes"].loc[fields["Field ID"].isin(dep_col_list)].tolist()
-labels = np.array([f"[{note}] {desc}" for desc, note in zip(labels_desc, labels_note)])
+labels = [f"[{note}] {desc}" for desc, note in zip(labels_desc, labels_note)]
 
-colors=["skyblue", "darkseagreen", "pink", "gold", "mediumturquoise", "plum", "orange"]
+colors=["gold", "darkseagreen", "pink"]
 set_link_color_palette(colors)
 _, ax = plt.subplots(figsize=(12, 8))
 dendro_res = dendrogram(
-    linkage_mat, orientation="left", labels=labels, ax=ax, leaf_font_size=12,
-    above_threshold_color="k", color_threshold=0.59*max(linkage_mat[:, 2]))
+    linkage_mat, orientation="left", labels=np.array(labels), ax=ax, leaf_font_size=12,
+    above_threshold_color="k", color_threshold=0.8*max(linkage_mat[:, 2]))
 plt.tight_layout()
 plt.savefig(Path(args.img_dir, "ukb_dep_cluster.png", bbox_inches="tight", dpi=500))
 
 # Define clusters
-clusters = {}
-for leaf, color in zip(reversed(dendro_res["leaves"]), reversed(dendro_res["leaves_color_list"])):
-    cluster_name = f"Sum score (cluster {len(colors) - colors.index(color)})"
-    if cluster_name in clusters.keys():
-        clusters[cluster_name].append(field_dict["Dep sympt"][leaf])
-    else:
-        clusters[cluster_name] = [field_dict["Dep sympt"][leaf]]
-    print(cluster_name, color, labels[leaf])
+clusters = {"Sum score 0": [], "Sum score 1": [], "Sum score 2": []}
+for cluster, sympt, label in zip(model.labels_, field_dict["Dep sympt"], labels):
+    clusters[f"Sum score {cluster}"].append(sympt)
+    print(cluster, label)
 
 # Apply clustering to association sample
-col_type_pheno = ["Body fat", "Brain GMV", "Brain WM", "Blood metabol", "Blood count"]
+col_type_pheno = ["Body fat", "Brain WM", "Blood metabol", "Blood count"]
 data_sdem = []
 for col_type in col_type_pheno:
     col_list_curr = (
