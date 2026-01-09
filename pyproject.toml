@@ -7,7 +7,7 @@ name = "ukb_dep_immunometabol"
 authors = [
     {name = "Jianxiao Wu", email = "j.wu@fz-juelich.de"}
 ]
-description = "Association between depressive symptoms and immunometabolic biomarkers in UK Biobank"
+description = "Characterisation of depressive symptoms dimensions in UK Biobank"
 readme = {file = "README.md", content-type = "text/markdown"}
 requires-python = ">=3.11"
 keywords = ["neuroimaging", "multimodal"]
@@ -17,22 +17,25 @@ classifiers = [
     "Topic :: Neuroscience :: Neuroimaging",
 ]
 dependencies = [
-    "pandas ~= 2.2.3",
-    "numpy ~= 2.2.2",
-    "scipy ~= 1.16.2",
-    "scikit-learn ~= 1.5.2",
-    "statsmodels ~= 0.14.4",
+    "matplotlib ~= 3.10.0",
     "nibabel ~= 5.3.2",
     "nilearn ~= 0.11.1",
-    "seaborn ~= 0.13.2",
-    "matplotlib ~= 3.10.0",
+    "numpy ~= 2.2.2",
+    "pandas ~= 2.2.3",
     "pycirclize ~= 1.9.1",
+    "pydra ~= 1.0a",
+    "scipy ~= 1.16.2",
+    "scikit-learn ~= 1.5.2",
+    "seaborn ~= 0.13.2",
+    "statsmodels ~= 0.14.4",
 ]
 dynamic = ["version"]
 
+[project.scripts]
+ukb_dep = "ukb_dep_immunometabol.main:main"
+
 [project.urls]
 repository = "https://github.com/jadecci/ukb_dep_immunometabol"
-repository-gin = "https://gin.g-node.org/jadecci/ukb_deppred"
 
 [tool.setuptools]
 packages = ["ukb_dep_immunometabol"]

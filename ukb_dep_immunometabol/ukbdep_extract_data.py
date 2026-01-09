@@ -10,6 +10,7 @@ parser = argparse.ArgumentParser(
         description="Extract all useful data",
         formatter_class=lambda prog: argparse.ArgumentDefaultsHelpFormatter(prog, width=100))
 parser.add_argument("--raw_tsv", type=Path, help="Absolute path to UK Biobank raw data tsv file")
+parser.add_argument("--gmv_csv", type=Path, help="Absolute path to GMV data csv file")
 parser.add_argument("--sel_csv", type=Path, help="Absolute path to table of selected fields")
 parser.add_argument("--wd_csv", type=Path, help="Absolute path to list of withdrawn subjects")
 parser.add_argument("--neu_code", type=Path, help="Absolute path to ICD10 neurological code")
@@ -143,5 +144,17 @@ for col_type in col_type_pheno:
     data_pheno.to_csv(Path(args.out_dir, f"ukb_data_{pheno_name}.csv"))
     print(f"Subjects with all phenotypes for {col_type}: N = {data_pheno.shape[0]}")
     data_cluster = data_cluster.drop(data_pheno.index, errors="ignore")
+
+# Brain GMV data
+sub_list = [f"sub-{ind}" for ind in all_data.index]
+data_gmv = pd.read_csv(args.gmv_csv, index_col="SubjectID")
+gmv_cols = [col for col in data_gmv.columns if "17Networks" in col]
+data_gmv = data_gmv[gmv_cols].loc[data_gmv.index.isin(sub_list)]
+data_gmv.to_csv(Path(args.out_dir, "ukb_data_Brain-GMV.csv"))
+print(f"Subjects with all phenotypes for Brain GMV: N = {data_gmv.shape[0]}")
+
+# Clustering sample
+gmv_ind = [sub.split("-")[1] for sub in data_gmv.index]
+data_cluster = data_cluster.drop(gmv_ind, errors="ignore")
 data_cluster.to_csv(Path(args.out_dir, "ukb_data_cluster.csv"))
 print(f"Training sample: N = {data_cluster.shape[0]}")
