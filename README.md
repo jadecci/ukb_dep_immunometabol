@@ -26,7 +26,8 @@ The workflow requires the raw data from UK Biobank to be organised as follows:
 
 ```console
 rep_data
-├── ukb_gmv_CAT12.8_Schaefer400.csv
+├── ukb_cat_rois_Schaefer200_17Networks.csv
+├── ukb_cat_rois_Tian_7T_S2.csv
 ├── ukb_raw.tsv
 └── withdrawn_subjects.csv
 ```

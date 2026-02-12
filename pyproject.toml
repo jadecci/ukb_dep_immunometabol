@@ -22,6 +22,7 @@ dependencies = [
     "nilearn ~= 0.11.1",
     "numpy ~= 2.2.2",
     "pandas ~= 2.2.3",
+    "Pillow ~= 12.1.0",
     "pycirclize ~= 1.9.1",
     "pydra ~= 1.0a",
     "scipy ~= 1.16.2",
