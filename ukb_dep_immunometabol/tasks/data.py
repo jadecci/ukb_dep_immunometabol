@@ -1,5 +1,6 @@
 from os import remove
 from pathlib import Path
+import json
 import logging
 
 from pydra.compose import python
@@ -16,9 +17,11 @@ class ExtractData(python.Task["CanonicalPythonTask.Outputs"]):
     Args:
         data_dir: Raw data directory
         output_dir: Output directory
+        cat_pheno: List of phenotype categories
     """
     data_dir: Path
     output_dir: Path
+    cat_pheno: list
 
     class Outputs(python.Outputs):
         """
@@ -27,16 +30,16 @@ class ExtractData(python.Task["CanonicalPythonTask.Outputs"]):
             data_pheno_files: Extracted data file for each phenotype category
             data_cluster_file: Extracted data for clustering analysis
             data_sdem_file: Extracted data for sociodemograhpic analysis
-            field_types: Data fields grouped by type
+            field_type_file: Data fields grouped by type
         """
         data_file: Path
         data_pheno_files: dict
         data_cluster_file: Path
         data_sdem_file: Path
-        field_types: dict
+        field_type_file: Path
 
     @staticmethod
-    def function(data_dir, output_dir):
+    def function(data_dir, output_dir, cat_pheno):
         output_data_dir = Path(output_dir, "extracted_data")
         output_data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -70,19 +73,12 @@ class ExtractData(python.Task["CanonicalPythonTask.Outputs"]):
                 if not np.isnan(field_row["To Exclude 2"]):
                     excludes[col_id].append(field_row["To Exclude 2"])
 
-        # ICD-10 code
-        raw_data_file = Path(data_dir, "ukb_raw.tsv")
-        data_head = pd.read_table(raw_data_file, delimiter="\t", encoding="ISO-8859-1", nrows=2)
-        for col in data_head.columns:
-            if col.split("-")[0] in "41270":
-                field_types["Diagn ICD10"].append(col)
-                col_dtypes[col] = str
-
         data_file = Path(output_data_dir, "ukb_data_all.csv")
         if data_file.exists():
             remove(data_file)
 
         # Subjects with all depressive symptom items
+        raw_data_file = Path(data_dir, "ukb_raw_v20.tsv") # phenotype file with v20 release data
         data_iter = pd.read_table(
             raw_data_file, delimiter="\t", encoding="ISO-8859-1", chunksize=1000,
             usecols=list(col_dtypes), dtype=col_dtypes, index_col="eid")
@@ -123,6 +119,35 @@ class ExtractData(python.Task["CanonicalPythonTask.Outputs"]):
         data_all = data_all.drop(data_remove.index)
         logger.info(f"Subjects who reported at least one symptom: N = {data_all.shape[0]}")
 
+        # ICD-10 code
+        icd_data_file = Path(data_dir, "ukb_raw.tsv")  # old phenotype file with ICD-10 data
+        data_head = pd.read_table(icd_data_file, delimiter="\t", encoding="ISO-8859-1", nrows=2)
+        col_dtypes = {"eid": str}
+        icd_cols = []
+        for col in data_head.columns:
+            if col.split("-")[0] == "41270":
+                col_dtypes[col] = str
+                icd_cols.append(col)
+
+        # ICD-10 data
+        data_icd_file = Path(output_data_dir, "ukb_data_icd.csv")
+        if data_icd_file.exists():
+            remove(data_icd_file)
+        data_iter = pd.read_table(
+            icd_data_file, delimiter="\t", encoding="ISO-8859-1", chunksize=1000,
+            usecols=list(col_dtypes.keys()), dtype=col_dtypes, index_col="eid")
+        for data_icd in data_iter:
+            data_out = data_icd.loc[data_icd.index.intersection(data_all.index)]
+            if not data_out.empty:
+                if data_icd_file.exists():
+                    data_out.to_csv(data_icd_file, mode="a", header=False)
+                else:
+                    data_out.to_csv(data_icd_file)
+        data_icd = pd.read_csv(
+            data_icd_file, usecols=list(col_dtypes.keys()), dtype=col_dtypes, index_col="eid")
+        data_all = pd.concat([data_all, data_icd], axis="columns", join="inner")
+        logger.info(f"Subjects with ICD-10 diagnosis data: N = {data_all.shape[0]}")
+
         # Remove subjects with neurological conditions
         neu_code_pd = pd.read_csv(load_resource("icd10_neurological.csv"))
         neu_code = {}
@@ -132,45 +157,54 @@ class ExtractData(python.Task["CanonicalPythonTask.Outputs"]):
         all_neu_code = [code for code_list in neu_code.values() for code in code_list]
         for data_i, data_row in data_all.iterrows():
             code_list = []
-            for col in field_types["Diagn ICD10"]:
+            for col in icd_cols:
                 if data_row[col] != "" and data_row[col] in all_neu_code:
                     code_list.append(data_row[col])
             neu_diagn[data_i] = 1 if code_list else 0
         data_all = data_all.loc[pd.Series(neu_diagn) == 0]
         logger.info(f"Subjects without neurological conditions: N = {data_all.shape[0]}")
 
-        # Brain GMV data (adjusted by TIV) of 200-parcel Schaefer atlas
-        data_gmv = pd.read_csv(
-            Path(data_dir, "ukb_cat_rois_Schaefer200_17Networks.csv"), index_col="SubjectID")
-        data_gmv.index = data_gmv.index.str.slice(start=4)
-        data_gmv = data_gmv.loc[
-            (data_gmv.index.isin(data_all.index)) & (data_gmv["Session"] == "ses-2")]
-        gmv_cols = data_gmv.columns[10:210].to_list()
-        data_gmv = data_gmv[gmv_cols].div(data_gmv["TIV"], axis="index")
-        data_all = pd.concat([data_all, data_gmv], axis="columns", join="outer")
-        field_types["Brain GMV"] = gmv_cols
+        # Add MDD diagnosis column
+        code_map = pd.read_csv(load_resource("icd10_level_map.csv"))
+        code_list = []
+        for _, block_row in code_map.loc[code_map["Level"] == 2].iterrows():
+            if block_row["Coding"] in ["F32", "F33", "F34", "F38", "F39"]:
+                if block_row["Selectable"] == "Yes":
+                    code_list.append(block_row["Coding"])
+                else:
+                    code_next = code_map.loc[code_map["Parent"] == str(block_row["Node"])]
+                    for _, code_row in code_next.iterrows():
+                        code_list.append(code_row["Coding"])
+        dep_diagn = {}
+        for data_i, data_row in data_all.iterrows():
+            dep_diagn[data_i] = "nonMDD"
+            for col in icd_cols:
+                if data_row[col] != "" and data_row[col] in code_list:
+                    dep_diagn[data_i] = "MDD"
+                    continue
+        data_all["MDD diagnosis"] = pd.Series(dep_diagn)
+        field_types["MDD diagnosis"] = ["MDD diagnosis"]
 
-        # Brain GMV data (adjusted by TIV) of 34-parcel Melbourne subcortex atlas
-        data_gmv = pd.read_csv(
-            Path(data_dir, "ukb_cat_rois_Tian_7T_S2.csv"), index_col="SubjectID")
-        data_gmv.index = data_gmv.index.str.slice(start=4)
-        data_gmv = data_gmv.loc[
-            (data_gmv.index.isin(data_all.index)) & (data_gmv["Session"] == "ses-2")]
-        gmv_cols = data_gmv.columns[10:44].to_list()
-        data_gmv = data_gmv[gmv_cols].div(data_gmv["TIV"], axis="index")
-        data_all = pd.concat([data_all, data_gmv], axis="columns", join="outer")
-        field_types["Brain GMV"].extend(gmv_cols)
+        # Proteomics data
+        data_pro = pd.read_csv(Path(data_dir, "ukb_proteomics.csv"), index_col="eid")
+        # field_types["Proteomics"] = data_pro.columns[-39:].to_list() # 39 protein markers
+        field_types["Proteomics"] = data_pro.columns[-45:].to_list()  # 45 protein markers
+        data_pro.index = data_pro.index.astype(str)
+        data_pro = data_pro[field_types["Proteomics"]].dropna(axis="index", how="any")
+        data_all = pd.concat([data_all, data_pro], axis="columns", join="outer")
 
-        data_all = data_all.rename_axis("eid")
+        # Save full data and fields
         data_all.to_csv(data_file)
+        field_type_file = Path(output_data_dir, "ukb_field_types.json")
+        with open(field_type_file, "w") as f:
+            json.dump(field_types, f)
 
         # Association sample for each phenotype category
-        col_type_pheno = ["Body fat", "Brain GMV", "Brain WM", "Blood metabol", "Blood count"]
-        cols_req = field_types["Dep sympt"] + field_types["Sociodemo"]
-        data_pheno_files = dict.fromkeys(col_type_pheno)
+        cols_req = field_types["Dep sympt"] + field_types["Sociodemo"] + ["MDD diagnosis"]
+        data_pheno_files = dict.fromkeys(cat_pheno)
         data_cluster = data_all.copy()
         data_sdem = []
-        for col_type in col_type_pheno:
+        for col_type in cat_pheno:
             pheno_name = col_type.replace(" ", "-")
             data_pheno = data_all[cols_req + field_types[col_type]].copy()
             data_pheno = data_pheno.dropna(axis="index", how="any", subset=field_types[col_type])
@@ -193,7 +227,7 @@ class ExtractData(python.Task["CanonicalPythonTask.Outputs"]):
         data_sdem.to_csv(data_sdem_file)
         logger.info(f"Sociodemographic analysis sample: N = {data_sdem.shape[0]}")
 
-        return data_file, data_pheno_files, data_cluster_file, data_sdem_file, field_types
+        return data_file, data_pheno_files, data_cluster_file, data_sdem_file, field_type_file
 
 
 @python.define

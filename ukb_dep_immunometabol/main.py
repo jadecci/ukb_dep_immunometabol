@@ -8,7 +8,7 @@ from pydra.utils import print_help, plot_workflow
 from ukb_dep_immunometabol.tasks.analysis import Clustering, PLS
 from ukb_dep_immunometabol.tasks.data import ExtractData, SociodemoData
 from ukb_dep_immunometabol.tasks.plotting import (
-    PlotClusterEval, PlotHieraCluster, PlotSociodemo, PlotPLSRadar)
+    PlotClusterEval, PlotHieraCluster, PlotSociodemo, PlotPLSCorr, PlotPLSVIP)
 
 
 @workflow.define
@@ -19,7 +19,10 @@ class UKBDepWf(workflow.Task["CanonicalWorkflowTask.Outputs"]):
 
     @staticmethod
     def constructor(data_dir, output_dir):
-        extract_data = workflow.add(ExtractData(data_dir=data_dir, output_dir=output_dir))
+        cat_pheno = ["Body fat", "Blood metabol", "Blood count", "Proteomics"]
+
+        extract_data = workflow.add(ExtractData(
+            data_dir=data_dir, output_dir=output_dir, cat_pheno=cat_pheno))
 
         cluster= workflow.add(Clustering(
             output_dir=output_dir, data_file=extract_data.data_file,
@@ -36,17 +39,23 @@ class UKBDepWf(workflow.Task["CanonicalWorkflowTask.Outputs"]):
 
         pls = workflow.add(PLS(
             output_dir=output_dir, data_pheno_files=extract_data.data_pheno_files,
-            field_types=extract_data.field_types, dep_score_file=cluster.dep_score_file))
-        plot_pls = workflow.add(PlotPLSRadar(output_dir=output_dir, pls_file=pls.pls_file))
+            field_type_file=extract_data.field_type_file, dep_score_file=cluster.dep_score_file,
+            cat_pheno=cat_pheno).split(diagn=["nonMDD", "MDD"]))
+        plot_pls_corr = workflow.add(PlotPLSCorr(
+            output_dir=output_dir, pls_corr_file=pls.pls_corr_file, diagn=pls.diagn))
+        plot_pls_vip = workflow.add(PlotPLSVIP(
+            output_dir=output_dir, pls_vip_file=pls.pls_vip_file, cat_pheno=cat_pheno,
+            diagn=pls.diagn))
 
         return (
             plot_evals.eval_plot, plot_clusters.cluster_plot, plot_sdem.sdem_plot,
-            plot_pls.pls_radar_plots)
+            plot_pls_corr.pls_corr_plot, plot_pls_vip.pls_vip_plots)
 
     class Outputs(workflow.Outputs):
         eval_plot: Path
         cluster_plot: Path
         sdem_plot: Path
+        pls_corr_plot: list
         pls_radar_plots: list
 
 
@@ -58,16 +67,17 @@ def main() -> None:
         "--data_dir", type=Path, required=True, help="Directory containing restricted UKB data")
     parser.add_argument("--output_dir", type=Path, required=True, help="Output directory")
     parser.add_argument("--work_dir", type=Path, default=None, help="Cache directory for Pydra")
+    parser.add_argument("--rerun", action="store_true", help="Force rerun whole workflow")
     config = vars(parser.parse_args())
 
     config["output_dir"].mkdir(parents=True, exist_ok=True)
 
     print_help(UKBDepWf)
-    plot_workflow(UKBDepWf, out_dir=config["output_dir"], export="png")#, plot_type="detailed")
+    plot_workflow(UKBDepWf, out_dir=config["output_dir"], export="png")
 
     wf = UKBDepWf(data_dir=config["data_dir"], output_dir=config["output_dir"])
     with Submitter(worker="cf", cache_root=config["work_dir"]) as submitter:
-        output = submitter(wf)
+        output = submitter(wf, rerun=config["rerun"])
     print(output)
 
 

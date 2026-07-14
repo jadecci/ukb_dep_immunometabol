@@ -1,17 +1,17 @@
 from os import remove
 from pathlib import Path
+import json
 import logging
 
-from scipy.stats import pearsonr
 from sklearn.cluster import AgglomerativeClustering, Birch, HDBSCAN, SpectralClustering
-from sklearn.cross_decomposition import PLSRegression
 from sklearn.metrics import calinski_harabasz_score, davies_bouldin_score, silhouette_score
 from sklearn.preprocessing import StandardScaler
+from statsmodels.stats.multitest import multipletests
 from pydra.compose import python
 import numpy as np
 import pandas as pd
 
-from ukb_dep_immunometabol.utils import load_resource
+from ukb_dep_immunometabol.utils import load_resource, pls_regression
 
 
 @python.define
@@ -172,39 +172,51 @@ class PLS(python.Task["CanonicalPythonTask.Outputs"]):
     Args:
         output_dir: Output directory
         data_pheno_files: Extracted data file for each phenotype category
-        field_types: Data fields grouped by type
+        field_type_file: Data fields grouped by type
         dep_score_file: Sum score of depressive symptom clusters for all subjects
+        cat_pheno: List of phenotype categories
+        diagn: Diagnosis (MDD, nonMDD, or mixed)
     """
     output_dir: Path
     data_pheno_files: dict
-    field_types: dict
+    field_type_file: Path
     dep_score_file: Path
+    cat_pheno: list
+    diagn: str
 
     class Outputs(python.Outputs):
         """
         Args:
-            pls_file: PLS results
+            pls_vip_file: PLS VIP score results
+            pls_corr_file: PLS component-y correlation results
+            diagn: Diagnosis (MDD, nonMDD, or mixed)
         """
-        pls_file: Path
+        pls_vip_file: Path
+        pls_corr_file: Path
+        diagn: str
 
     @staticmethod
-    def function(output_dir, data_pheno_files, field_types, dep_score_file):
+    def function(output_dir, data_pheno_files, field_type_file, dep_score_file, cat_pheno, diagn):
         output_pls_dir = Path(output_dir, "pls")
         output_pls_dir.mkdir(parents=True, exist_ok=True)
 
-        col_type_pheno = ["Body fat", "Brain GMV", "Brain WM", "Blood metabol", "Blood count"]
-        col_dtypes = {"eid": str, "31-0.0": float, "21003-2.0": float}
+        with open(field_type_file, "r") as f:
+            field_types = json.load(f)
+
         data_pls = []
-        for col_type in col_type_pheno:
+        corr_pls = []
+        col_dtypes = {"eid": str, "31-0.0": float, "21003-2.0": float}
+        dep_scores = {"1": "Mood sum score", "2": "Energy sum score"}
+        for col_type in cat_pheno:
             # Association sample
-            cols = ["31-0.0", "21003-2.0", "eid"] + field_types[col_type]
+            cols = ["31-0.0", "21003-2.0", "eid", "MDD diagnosis"] + field_types[col_type]
             dtypes = col_dtypes | ({col: float for col in field_types[col_type]})
             data_pheno = pd.read_csv(
                 data_pheno_files[col_type], usecols=cols, dtype=dtypes, index_col="eid")
             data_pheno = data_pheno.assign(age2=np.power(data_pheno["21003-2.0"], 2))
 
             # Add depressive sum scores
-            # From final clustering outcome, we use cluster 1 (energy) and 2 (mood)
+            # From final clustering outcome, we use cluster 1 (mood) and 2 (energy)
             cols = ["eid", "Sum score 1", "Sum score 2"]
             dtypes = {"eid": str, "Sum score 1": float, "Sum score 2": float}
             data_dep = pd.read_csv(dep_score_file, usecols=cols, dtype=dtypes, index_col="eid")
@@ -212,51 +224,59 @@ class PLS(python.Task["CanonicalPythonTask.Outputs"]):
 
             # Add derivative features for blood count
             if col_type == "Blood count":
+                eps = np.finfo(float).eps
                 data_pheno.loc[:, "sii"] = (
-                        data_pheno["30140-2.0"] * data_pheno["30080-2.0"] / data_pheno["30120-2.0"])
-                data_pheno.loc[:, "nlr"] = data_pheno["30140-2.0"] / data_pheno["30120-2.0"]
-                data_pheno.loc[:, "plr"] = data_pheno["30080-2.0"] / data_pheno["30120-2.0"]
-                data_pheno.loc[:, "lmr"] = data_pheno["30120-2.0"] / data_pheno["30190-2.0"]
+                        data_pheno["30140-0.0"] * data_pheno["30080-0.0"]
+                        / (data_pheno["30120-0.0"] + eps))
+                data_pheno.loc[:, "nlr"] = data_pheno["30140-0.0"] / (data_pheno["30120-0.0"] + eps)
+                data_pheno.loc[:, "plr"] = data_pheno["30080-0.0"] / (data_pheno["30120-0.0"] + eps)
+                data_pheno.loc[:, "lmr"] = data_pheno["30120-0.0"] / (data_pheno["30190-0.0"] + eps)
                 field_types["Blood count"].extend(["sii", "nlr", "plr", "lmr"])
 
-            # Perform PLS for each depressive score in each sex subgroup separately
+            # Perform PLS in each sex subgroup
+            if diagn == "mixed":
+                data_diagn = data_pheno
+            else:
+                data_diagn = data_pheno.loc[data_pheno["MDD diagnosis"] == diagn]
             for i, sex in enumerate(["female", "male"]):
-                data_curr = data_pheno.loc[data_pheno["31-0.0"] == i]
+                data_curr = data_diagn.loc[data_diagn["31-0.0"] == i]
+
+                # Perform PLS for each depressive dimension
                 for dep_y, dep_covar in zip(["1", "2"], ["2", "1"]):
+                    dict_curr = {
+                        "Feature type": col_type, "Sex": sex, "Depressive score": dep_scores[dep_y]}
                     x = data_curr[field_types[col_type]]
                     y = data_curr[f"Sum score {dep_y}"]
                     covar = data_curr[["21003-2.0", "age2", f"Sum score {dep_covar}"]]
+                    r, r_p, vips, vips_p = pls_regression(x, y, covar)
 
-                    # Standardise features and regress out covariates from target
-                    # PLSRegression should scale both x and y by default, but just to be safe
-                    x_std = StandardScaler().fit_transform(x)
-                    y_resid = y - np.dot(covar, np.linalg.lstsq(covar, y, rcond=-1)[0])
-                    model = PLSRegression(n_components=1, copy=True)
-                    model.fit(x_std, y_resid)
+                    # Component-Y correlation
+                    ind_curr = f"{col_type}_{sex}_{dep_y}"
+                    corr_pls_curr = dict_curr | {
+                        "Correlation": r, "Absolute correlation": np.abs(r), "P-value": r_p}
+                    corr_pls_curr = pd.DataFrame(corr_pls_curr, index=[ind_curr])
+                    corr_pls.append(corr_pls_curr)
 
-                    # Variable Importance in Projection (VIP) score
-                    vips = np.zeros((model.x_rotations_.shape[0],))
-                    s = np.diag(
-                        model.x_scores_.T @ model.x_scores_ @ model.y_loadings_.T
-                        @ model.y_loadings_).reshape(model.x_rotations_.shape[1], -1)
-                    for j in range(model.x_rotations_.shape[0]):
-                        w = (model.x_rotations_[j] / np.linalg.norm(model.x_rotations_))**2
-                        vips[j] = np.squeeze(np.sqrt(
-                            model.x_rotations_.shape[0] * (s.T @ w) / np.sum(s)))
-
-                    # PLS results
-                    res = pearsonr(model.x_scores_.reshape(-1), y_resid)
-                    for pheno, vip in zip(field_types[col_type], vips):
+                    # VIP scores
+                    for pheno, vip, vip_p in zip(field_types[col_type], vips, vips_p):
                         ind_curr = f"{pheno}_{sex}_{dep_y}"
-                        data_pls_curr = {
-                            "Data field": pheno, "Feature type": col_type, "Sex": sex,
-                            "Depressive score": f"Sum score {dep_y}",
-                            "Component-Y correlation": res.statistic, "VIP score": vip}
+                        data_pls_curr = dict_curr | {
+                            "Data field": pheno, "VIP score": vip, "P-value": vip_p}
                         data_pls_curr = pd.DataFrame(data_pls_curr, index=[ind_curr])
                         data_pls.append(data_pls_curr)
-
+        corr_pls = pd.concat(corr_pls, axis="index")
         data_pls = pd.concat(data_pls, axis="index")
-        pls_file = Path(output_pls_dir, "ukb_pls.csv")
-        data_pls.to_csv(pls_file)
 
-        return pls_file
+        # Correct for multiple comparisons
+        h = multipletests(corr_pls["P-value"], alpha=0.05, method="fdr_bh")
+        corr_pls = corr_pls.assign(Significance=h[0])
+        h = multipletests(data_pls["P-value"], alpha=0.05, method="fdr_bh")
+        data_pls = data_pls.assign(Significance=h[0])
+
+        pls_vip_file = Path(output_pls_dir, f"ukb_{diagn}_pls_vip.csv")
+        data_pls.to_csv(pls_vip_file)
+
+        pls_corr_file = Path(output_pls_dir, f"ukb_{diagn}_pls_corr.csv")
+        corr_pls.to_csv(pls_corr_file)
+
+        return pls_vip_file, pls_corr_file, diagn
